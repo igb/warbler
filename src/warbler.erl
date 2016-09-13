@@ -1,5 +1,5 @@
 -module(warbler).
--export([init/0,get_incidents/2,bucket/1]).
+-export([init/0,get_incidents/2,bucket/1,get_incident_keys/1]).
 
 
 -ifdef(TEST).
@@ -76,6 +76,16 @@ bucket([], Buckets) ->
     Buckets.
 
 		    
+get_incident_keys(Buckets)-> 
+    get_incident_keys(Buckets, []).   
+
+get_incident_keys([H|T], Acc)->
+    {_,Incidents}=H,
+    NewAcc = lists:append(Acc, [Incident || {Incident, _} <- Incidents ]),
+    get_incident_keys(T, NewAcc);
+get_incident_keys([], Acc)->
+    sets:to_list(sets:from_list(Acc)).
+    
     
 	    
 
@@ -99,6 +109,16 @@ bucket_test()->
     Buckets002 = warbler:bucket(Incidents002),
     
     
-    {{2015,53},[{"my_incident_key", 1}]} = lists:keyfind({2015,53}, 1, Buckets001). 
+    {{2015,53},[{"my_incident_key", 1}]} = lists:keyfind({2015,53}, 1, Buckets001),
+    {{2015,53},[{"my_incident_key", 2}]} = lists:keyfind({2015,53}, 1, Buckets002). 
+
+
+get_incident_keys_test() ->
+    Buckets = [
+     {{2015,53},[{"bat_incident_key", 1},{"bar_incident_key", 4}, {"foo_incident_key", 1}]},
+     {{2015,51},[{"bat_incident_key", 3},{"bar_incident_key", 1}, {"bing_incident_key", 1}]},
+     {{2015,50},[{"baz_incident_key", 5},{"bar_incident_key", 1}]}
+    ],
+    ["bar_incident_key", "bat_incident_key", "baz_incident_key", "bing_incident_key", "foo_incident_key"] = lists:sort(get_incident_keys(Buckets)).
 
 -endif.
