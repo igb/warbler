@@ -84,7 +84,7 @@ get_incident_keys([H|T], Acc)->
     NewAcc = lists:append(Acc, [Incident || {Incident, _} <- Incidents ]),
     get_incident_keys(T, NewAcc);
 get_incident_keys([], Acc)->
-    sets:to_list(sets:from_list(Acc)).
+    lists:sort(sets:to_list(sets:from_list(Acc))).
     
     
 	    
@@ -119,6 +119,7 @@ get_incident_keys_test() ->
      {{2015,51},[{"bat_incident_key", 3},{"bar_incident_key", 1}, {"bing_incident_key", 1}]},
      {{2015,50},[{"baz_incident_key", 5},{"bar_incident_key", 1}]}
     ],
-    ["bar_incident_key", "bat_incident_key", "baz_incident_key", "bing_incident_key", "foo_incident_key"] = lists:sort(get_incident_keys(Buckets)).
+    %% incident keys should be returned sorted
+    ["bar_incident_key", "bat_incident_key", "baz_incident_key", "bing_incident_key", "foo_incident_key"] = get_incident_keys(Buckets).
 
 -endif.
