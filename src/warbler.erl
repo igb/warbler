@@ -118,11 +118,17 @@ add_column([Row|Table],[NewValue|Column],Acc)->
 add_column([],[],Acc) ->
     Acc.
 
-table_to_csv(Table)->    
-    ok.
+table_to_csv([Header|Body])->
+    [_|Dates]=Header,
+    DateStrings = [lists:flatten([integer_to_list(Year), "-", integer_to_list(Week)]) || {Year, Week} <- Dates],
+    DateStringsHeader = lists:append([[""], DateStrings]),
+    BodyStrings = lists:map(fun(X)-> [H|T] = X, TStrings = [integer_to_list(Y) || Y <- T], [H|TStrings] end, Body),
+    Table = [DateStringsHeader|BodyStrings],
+    CsvList = lists:map(fun(X) -> [H|T]=X, lists:flatten([H, [lists:flatten([",", Y]) || Y <- T], "\n"])  end, Table),
+    lists:flatten(CsvList).
 
-    
-    
+
+
 
 
     
@@ -209,12 +215,9 @@ table_to_csv_test()->
 	     ["bing_incident_key",0,1,0],
 	     ["foo_incident_key",0,0,1]
 	    ],
-    Csv=",2015-50,2015-51,2015-53\nbar_incident_key,1,1,4\nbat_incident_key,0,3,1\nbaz_incident_key,5,0,0\nbing_incident_key,0,1,0\nfoo_incident_key,0,0,1",
-    Csv = table_to_csv(Table).
+    ExpectedCsv=",2015-50,2015-51,2015-53\nbar_incident_key,1,1,4\nbat_incident_key,0,3,1\nbaz_incident_key,5,0,0\nbing_incident_key,0,1,0\nfoo_incident_key,0,0,1\n",
+    Csv = table_to_csv(Table),
+    ExpectedCsv = Csv.
 
-%add_column_test()->
-%    Table=[[1,2],[4,5],[7,8]],
-%    Column = [3,6,9],
-%    [[1,2,3],[4,5,6],[7,8,9]]=add_column(Table, Column).
 
 -endif.
