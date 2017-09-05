@@ -1,5 +1,5 @@
 -module(warbler).
--export([init/0,get_incidents/2,bucket/1,bucket/2,get_incident_keys/1,create_table/1,table_to_csv/1,log_incident_ids/2]).
+-export([init/0,get_incidents/2,bucket/1,bucket/2,get_incident_keys/1,create_table/1,table_to_csv/1,log_incident_ids/2, get_service/2]).
 
 
 -ifdef(TEST).
@@ -11,8 +11,7 @@ init()->
     lists:map(fun(X)->
 		      application:start(X)
 	      end, [crypto, public_key, ssl, inets]).
-get_service(Token, ServiceId)->
-    ok.
+
     
 get_incidents(Token, TeamId)->
     get_incidents(Token, TeamId, []).
@@ -34,11 +33,21 @@ get_incidents(Token, TeamId, Acc)->
 	_ -> NewAcc
     end.
 
+get_service(Token, ServiceId)->
+    Parameters = [{"include%5B%5D", "teams"}],
+    DecodedBody = pager_duty_request(Token, lists:flatten(["services", "/", ServiceId]), Parameters),
+    DecodedBody.
+
+
+
+
+
 
 pager_duty_request(Token, Endpoint, Parameters)->
     Url = "https://api.pagerduty.com",
     ParameterString = create_parameter_string(Parameters),
     RequestUrl=lists:flatten([Url, "/", Endpoint, "?", ParameterString]),    
+    io:format("~p~n", [RequestUrl]),
      {ok,{{"HTTP/1.1",200,"OK"}, _, Body}}= httpc:request(get,
 		  {RequestUrl,
 		   [{"Accept", "application/vnd.pagerduty+json;version=2"},
@@ -51,6 +60,8 @@ pager_duty_request(Token, Endpoint, Parameters)->
     io:format("~p", [Body]),
     DecodedBody = jiffy:decode(Body),
     DecodedBody.
+
+
 
 
 create_parameter_string([H|T])->
