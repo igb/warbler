@@ -1,5 +1,5 @@
 -module(warbler).
--export([init/0,get_incidents/2,bucket/1,get_incident_keys/1]).
+-export([init/0,get_incidents/2,bucket/1,bucket/2,get_incident_keys/1,create_table/1,table_to_csv/1,log_incident_ids/2]).
 
 
 -ifdef(TEST).
@@ -11,25 +11,17 @@ init()->
     lists:map(fun(X)->
 		      application:start(X)
 	      end, [crypto, public_key, ssl, inets]).
-
+get_service(Token, ServiceId)->
+    ok.
+    
 get_incidents(Token, TeamId)->
     get_incidents(Token, TeamId, []).
 
 get_incidents(Token, TeamId, Acc)->
-   {ok,{{"HTTP/1.1",200,"OK"}, _, Body}}= httpc:request(get,
-		  {lists:flatten(["https://api.pagerduty.com/incidents?date_range=all&team_ids%5B%5D=",
-				  TeamId,
-				  "&offset=",
-				  integer_to_list(length(Acc)),
-				  "&time_zone=UTC"]),
-		   [{"Accept", "application/vnd.pagerduty+json;version=2"},
-		     {"Host","api.pagerduty.com"},
-		    {"Authorization",
-		     lists:append("Token token=", Token)
-		    }
-		   ]
-		  }, [], [{headers_as_is, true}]),
-    DecodedBody = jiffy:decode(Body),
+    Parameters = [{"date_range", "all"},
+		 {"team_ids%5B%5D", TeamId},
+		 {"offset", integer_to_list(length(Acc))}],
+    DecodedBody = pager_duty_request(Token, "incidents", Parameters),
     {Response} = DecodedBody,
     {<<"incidents">>, Incidents}=lists:keyfind(<<"incidents">>, 1, Response),
     NewAcc = lists:append(Acc, Incidents),
@@ -41,17 +33,69 @@ get_incidents(Token, TeamId, Acc)->
 	    get_incidents(Token, TeamId, NewAcc);
 	_ -> NewAcc
     end.
-		
-bucket(Incidents)->
-    bucket(Incidents, []).
 
-bucket([{Incident}|Incidents], Buckets)->
+
+pager_duty_request(Token, Endpoint, Parameters)->
+    Url = "https://api.pagerduty.com",
+    ParameterString = create_parameter_string(Parameters),
+    RequestUrl=lists:flatten([Url, "/", Endpoint, "?", ParameterString]),    
+     {ok,{{"HTTP/1.1",200,"OK"}, _, Body}}= httpc:request(get,
+		  {RequestUrl,
+		   [{"Accept", "application/vnd.pagerduty+json;version=2"},
+		     {"Host","api.pagerduty.com"},
+		    {"Authorization",
+		     lists:append("Token token=", Token)
+		    }
+		   ]
+		  }, [], [{headers_as_is, true}]),
+    io:format("~p", [Body]),
+    DecodedBody = jiffy:decode(Body),
+    DecodedBody.
+
+
+create_parameter_string([H|T])->
+    {Key, Value}=H,
+    Acc=lists:flatten([Key, "=", Value]),
+    create_parameter_string(T, Acc).
+
+create_parameter_string([H|T], Acc) ->
+    {Key, Value}=H,
+    NewAcc=lists:flatten([Acc, "&", Key, "=", Value]),
+    create_parameter_string(T, NewAcc);
+create_parameter_string([], Acc) ->
+    Acc.
+
+
+
+
+
+log_incident_ids(Incidents, File)->		
+    {ok, Out} = file:open("/tmp/pgIncidents", [write]),
+    F=fun(X)->
+	      {Y}=X,
+	      {_,Number}=lists:keyfind(<<"incident_number">>, 1,Y),
+	      Number
+      end,
+    Numbers = lists:map(F, Incidents),
+    lists:map(fun(X)->
+		      io:format(Out, "~p~n", [X]) end,
+	      Numbers).
+
+% buckets incidents by incident key and the ISO week-of-year number in which it occurred.
+bucket(Incidents)->
+    bucket(Incidents, [], fun(X)->X end).
+
+bucket(Incidents, KeyMapFunction)->
+    bucket(Incidents, [], KeyMapFunction).
+
+bucket([{Incident}|Incidents], Buckets, KeyMapFunction)->
 
     {<<"created_at">>, CreatedAt}=lists:keyfind(<<"created_at">>, 1, Incident),
     {<<"incident_key">>,IncidentKey}=lists:keyfind(<<"incident_key">>, 1, Incident),
 
     CreatedAtStr = binary_to_list(CreatedAt),
-    IncidentKeyStr = binary_to_list(IncidentKey),
+    IncidentKeyStr = KeyMapFunction(strip_timestamp(binary_to_list(IncidentKey))),
+
 
     [Year | [Month | [Day | _]]]= string:tokens(CreatedAtStr, "-T"),
     Date = {list_to_integer(Year), list_to_integer(Month), list_to_integer(Day)},
@@ -71,9 +115,23 @@ bucket([{Incident}|Incidents], Buckets)->
 	    end,
 	    NewBuckets = lists:keyreplace(IsoWeek, 1, Buckets, {IsoWeek, NewIncidentCounts})
     end,
-    bucket(Incidents, NewBuckets);
-bucket([], Buckets) ->
+    bucket(Incidents, NewBuckets, KeyMapFunction);
+bucket([], Buckets, _) ->
     Buckets.
+
+
+
+strip_timestamp(IncidentKey)->
+    ReplacedIncidentKey = re:replace(IncidentKey, "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z", "_"),
+    
+     
+    lists:flatten(lists:map(fun(X)-> case is_binary(X) of
+					 true ->
+					     binary_to_list(X);
+					 false ->
+					     X
+				     end
+			    end, ReplacedIncidentKey)). 
 
 		    
 get_incident_keys(Buckets)-> 
@@ -81,10 +139,13 @@ get_incident_keys(Buckets)->
 
 get_incident_keys([H|T], Acc)->
     {_,Incidents}=H,
-    NewAcc = lists:append(Acc, [Incident || {Incident, _} <- Incidents ]),
+    NewAcc = lists:append(Acc, [strip_comma(Incident) || {Incident, _} <- Incidents ]),
     get_incident_keys(T, NewAcc);
 get_incident_keys([], Acc)->
     lists:sort(sets:to_list(sets:from_list(Acc))).
+
+strip_comma(String)->
+    lists:flatten(string:tokens(String, ",")).
     
 get_weeks(Buckets)->    
     lists:sort([Week || {Week,_} <- Buckets]).
@@ -136,6 +197,11 @@ table_to_csv([Header|Body])->
 	    
 
 -ifdef(TEST).
+
+param_builder_test() ->
+    ExpectedString = "date_range=all&include%5B%5D=teams&offset=100&time_zone=UTC",
+    Parameters=[{"date_range", "all"},{"include%5B%5D", "teams"}, {"offset", "100"}, {"time_zone", "UTC"}],
+    ?assert(create_parameter_string(Parameters)  =:= ExpectedString).
 
 bucket_test()->
     Incident001 = {[{<<"created_at">>, <<"2015-12-28T16:42:44Z">>},
