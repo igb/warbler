@@ -48,7 +48,7 @@ pager_duty_request(Token, Endpoint, Parameters)->
     ParameterString = create_parameter_string(Parameters),
     RequestUrl=lists:flatten([Url, "/", Endpoint, "?", ParameterString]),    
     io:format("~p~n", [RequestUrl]),
-     {ok,{{"HTTP/1.1",200,"OK"}, _, Body}}= httpc:request(get,
+    Response = httpc:request(get,
 		  {RequestUrl,
 		   [{"Accept", "application/vnd.pagerduty+json;version=2"},
 		     {"Host","api.pagerduty.com"},
@@ -57,7 +57,10 @@ pager_duty_request(Token, Endpoint, Parameters)->
 		    }
 		   ]
 		  }, [], [{headers_as_is, true}]),
-    io:format("~p", [Body]),
+
+
+
+    {ok,{{"HTTP/1.1",_,_}, _, Body}} = Response,
     DecodedBody = jiffy:decode(Body),
     DecodedBody.
 
