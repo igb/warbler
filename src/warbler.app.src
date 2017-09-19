@@ -1,7 +1,7 @@
 {application, warbler,
  [
   {description, ""},
-  {vsn, "1.2"},
+  {vsn, "1.3"},
   {registered, []},
   {applications, [
                   kernel,

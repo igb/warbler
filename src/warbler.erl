@@ -1,5 +1,5 @@
 -module(warbler).
--export([init/0,get_incidents/2,bucket/1,bucket/2,get_incident_keys/1,create_table/1,table_to_csv/1,log_incident_ids/2, get_service/2]).
+-export([init/0,get_incidents/2,bucket/1,bucket/2,get_incident_keys/1,create_table/1,table_to_csv/1,log_incident_ids/2, get_incidents_for_team/2, get_incidents_for_service/2, get_service/2]).
 
 
 -ifdef(TEST).
@@ -13,13 +13,11 @@ init()->
 	      end, [crypto, public_key, ssl, inets]).
 
     
-get_incidents(Token, TeamId)->
-    get_incidents(Token, TeamId, []).
+get_incidents(Token, Parameters)->
+    get_incidents(Token, Parameters, []).
 
-get_incidents(Token, TeamId, Acc)->
-    Parameters = [{"date_range", "all"},
-		 {"team_ids%5B%5D", TeamId},
-		 {"offset", integer_to_list(length(Acc))}],
+get_incidents(Token, Parameters, Acc)->
+
     DecodedBody = pager_duty_request(Token, "incidents", Parameters),
     {Response} = DecodedBody,
     {<<"incidents">>, Incidents}=lists:keyfind(<<"incidents">>, 1, Response),
@@ -28,10 +26,25 @@ get_incidents(Token, TeamId, Acc)->
     io:format("~p~n", [More]),
     case More of
 	true ->
+	    NewParameters = lists:keyreplace("offset", 1, Parameters, {"offset", integer_to_list(length(NewAcc))}),
 	    io:fwrite("~p~n", [integer_to_list(length(NewAcc))]),
-	    get_incidents(Token, TeamId, NewAcc);
+	    get_incidents(Token, NewParameters, NewAcc);
 	_ -> NewAcc
     end.
+
+
+get_incidents_for_team(Token, TeamId)->
+    Parameters = [{"date_range", "all"},
+		  {"team_ids%5B%5D", TeamId},
+		  {"offset", "0"}],
+    get_incidents(Token, Parameters).
+
+get_incidents_for_service(Token, ServiceId)->
+    Parameters = [{"date_range", "all"},
+		  {"service_ids%5B%5D", ServiceId},
+		  {"offset", "0"}],
+    get_incidents(Token, Parameters).
+
 
 get_service(Token, ServiceId)->
     Parameters = [{"include%5B%5D", "teams"}],
